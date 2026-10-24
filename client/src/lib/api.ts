@@ -1,13 +1,30 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import type { ExpenseFormat, StreamEvent, User } from '../type.ts';
 
-const configuredUrl = import.meta.env.VITE_API_URL;
-if (!configuredUrl) {
-  throw new Error(
-    'VITE_API_URL is not set. Add it to client/.env (local) or the Vercel project settings.'
-  );
+/**
+ * Reads VITE_API_URL, tolerating stray whitespace or a byte-order mark
+ * (some shells add one when piping the value into a CLI), and insists on
+ * an absolute http(s) URL. A relative value would silently send API calls
+ * to the frontend host instead.
+ */
+function resolveApiUrl(raw: string | undefined): string {
+  const value = (raw ?? '').replace(/^﻿/, '').trim().replace(/\/+$/, '');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      `VITE_API_URL must be an absolute URL like https://api.example.com (got "${value}"). ` +
+        'Set it in client/.env (local) or the Vercel project settings.'
+    );
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(`VITE_API_URL must use http or https (got "${value}").`);
+  }
+  return value;
 }
-export const API_URL = configuredUrl.replace(/\/+$/, '');
+
+export const API_URL = resolveApiUrl(import.meta.env.VITE_API_URL);
 
 const TOKEN_KEY = 'hisaab_token';
 
