@@ -50,10 +50,21 @@ export function createTelegramRouter(
   router.delete('/link', async (req, res) => {
     const chatIds = await links.unlinkUser(req.userId!);
     const bot = getBot();
-    // Let the chat know, but never fail the request because of Telegram
+    // Let the chat know how to reconnect, but never fail the request because of Telegram
+    const url = config.APP_FRONTEND_URL;
+    const message =
+      `🔌 This chat was disconnected from Hisaab.ai.\n\n` +
+      `To connect again, open <a href="${url}">${url}</a> → ⚙ Settings → Connect Telegram.`;
     await Promise.allSettled(
       chatIds.map((chatId) =>
-        bot?.api.sendMessage(chatId, '🔌 This chat was disconnected from Hisaab.ai.')
+        bot?.api.sendMessage(chatId, message, {
+          parse_mode: 'HTML',
+          link_preview_options: { is_disabled: true },
+          // Telegram only accepts public (https) URLs on buttons
+          ...(url.startsWith('https://') && {
+            reply_markup: { inline_keyboard: [[{ text: '🔗 Open Hisaab.ai', url }]] },
+          }),
+        })
       )
     );
     res.json({ linked: false });
