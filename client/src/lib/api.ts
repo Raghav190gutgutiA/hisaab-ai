@@ -8,7 +8,7 @@ import type { ExpenseFormat, StreamEvent, User } from '../type.ts';
  * to the frontend host instead.
  */
 function resolveApiUrl(raw: string | undefined): string {
-  const value = (raw ?? '').replace(/^﻿/, '').trim().replace(/\/+$/, '');
+  const value = (raw ?? '').replace(/^\uFEFF/, '').trim().replace(/\/+$/, '');
   let url: URL;
   try {
     url = new URL(value);
