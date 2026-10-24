@@ -5,6 +5,8 @@ import type { AppConfig } from '../config.ts';
 import { requireAuth } from '../auth.ts';
 import { runConfig, userMessage, type Agent, type RunContext } from '../agent.ts';
 import { userFacingError } from '../llm.ts';
+import { looksLikeCode, scopeRefusal } from '../guard.ts';
+import { detectLanguage } from '../language.ts';
 import { expenseFormatSchema, type UserService } from '../services/users.ts';
 import type { StreamMessage } from '../types.ts';
 
@@ -32,7 +34,8 @@ async function streamRun(
   res: Response,
   agent: Agent,
   input: Parameters<Agent['agent']['stream']>[0],
-  ctx: RunContext
+  ctx: RunContext,
+  userText = ''
 ) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -51,6 +54,10 @@ async function streamRun(
     clearInterval(ping);
     controller.abort();
   });
+
+  // Text streamed per AI message, so code can be caught mid-stream
+  const streamedText = new Map<string, string>();
+  let replaced = false;
 
   try {
     const response = await agent.agent.stream(input, {
@@ -73,7 +80,19 @@ async function streamRun(
         const [message] = chunk as [any, unknown];
         if (message.type === 'ai') {
           const text: string = message.text;
-          if (!text) continue;
+          if (!text || replaced) continue;
+          const key: string = message.id ?? 'current';
+          const soFar = (streamedText.get(key) ?? '') + text;
+          streamedText.set(key, soFar);
+          if (looksLikeCode(soFar)) {
+            // Off-topic reply: swap what was shown for the refusal and stop
+            replaced = true;
+            writeEvent(res, eventType, {
+              type: 'ai:replace',
+              payload: { text: scopeRefusal(detectLanguage(userText)) },
+            });
+            continue;
+          }
           writeEvent(res, eventType, { type: 'ai', payload: { text } });
         } else if (message.type === 'tool') {
           let result: Record<string, any>;
@@ -129,7 +148,7 @@ export function createChatRouter(
       return;
     }
 
-    await streamRun(res, agent, userMessage(parsed.data.query), ctx);
+    await streamRun(res, agent, userMessage(parsed.data.query), ctx, parsed.data.query);
   });
 
   /**

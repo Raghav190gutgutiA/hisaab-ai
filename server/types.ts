@@ -55,6 +55,11 @@ export type StreamMessage =
       payload: FormatPickerInterrupt;
     }
   | {
+      // Replaces the AI text streamed so far (used when a reply goes off topic)
+      type: 'ai:replace';
+      payload: { text: string };
+    }
+  | {
       type: 'error';
       payload: { message: string };
     };

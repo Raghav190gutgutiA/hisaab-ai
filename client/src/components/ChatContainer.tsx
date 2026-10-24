@@ -36,6 +36,16 @@ export function ChatContainer({ user, onLogout }: { user: User; onLogout: () => 
     setMessages((prevMessages) => {
       const lastMessage = prevMessages[prevMessages.length - 1];
 
+      // Off-topic reply caught mid-stream: swap the shown text for the refusal
+      if (event.type === 'ai:replace') {
+        if (lastMessage?.type === 'ai') {
+          const clonedMessages = [...prevMessages];
+          clonedMessages[clonedMessages.length - 1] = { ...lastMessage, payload: { text: event.payload.text } };
+          return clonedMessages;
+        }
+        return [...prevMessages, { id: newId(), type: 'ai', payload: { text: event.payload.text } }];
+      }
+
       // Streamed AI text: append to the message being written
       if (event.type === 'ai' && lastMessage?.type === 'ai') {
         const clonedMessages = [...prevMessages];

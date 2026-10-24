@@ -42,7 +42,9 @@ export type StreamEvent =
       payload: { name: string; result: Record<string, any> };
     }
   | { type: 'interrupt'; payload: FormatPickerRequest }
-  | { type: 'error'; payload: { message: string } };
+  | { type: 'error'; payload: { message: string } }
+  // Replaces the AI text streamed so far (off-topic reply caught mid-stream)
+  | { type: 'ai:replace'; payload: { text: string } };
 
 export type StreamMessage =
   | (Exclude<StreamEvent, { type: 'interrupt' }> & { id: string })

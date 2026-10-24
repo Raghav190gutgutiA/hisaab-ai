@@ -12,6 +12,7 @@ import { trimMessages, type BaseMessage } from '@langchain/core/messages';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { AIMessage, HumanMessage, ToolMessage } from 'langchain';
 import { initTools } from './tools.ts';
+import { isOffTopicRequest, looksLikeCode, scopeRefusal } from './guard.ts';
 import type { Collections } from './db.ts';
 import { todayIn } from './dates.ts';
 import { formatPaise } from './money.ts';
@@ -123,6 +124,7 @@ export function compactHistory(messages: BaseMessage[]): BaseMessage[] {
 
 function systemPrompt(timeZone: string, channel: Channel) {
   return `You are Hisaab.ai, a friendly expense tracking assistant. Reply briefly, in the user's language: English if they write English, Hinglish (Hindi in Roman script) if they write Hinglish.
+SCOPE: you ONLY help with the user's own expenses in Hisaab.ai: logging, viewing, analysing, and budgeting tips about their spending. For anything else (writing or explaining code in any language, general knowledge, news, people, homework, maths unrelated to their expenses, jokes, stories, other apps) do not answer it at all, not even partly. Instead reply only with: "I can only help with your expenses: logging them, showing your spending and analysing it." (in Hinglish: "Main sirf aapke kharche mein madad kar sakta hoon: expense add karna, hisaab dekhna aur analysis."). Never output code.
 Today is ${todayIn(timeZone)} (${timeZone}). Amounts are in rupees (₹). Categories: ${CATEGORIES.join(', ')}.
 Tools:
 - add_expenses: log expenses. Put every item from one message into one call. Keep repeated items as separate entries ("momos 200, momos 200" is two expenses); never merge or drop them.
@@ -209,6 +211,12 @@ export function createAgent(deps: AgentDeps) {
       startOn: 'human',
     });
 
+    // Clear off-topic requests (e.g. "write Python code") are refused without calling the model
+    const lastMessage = state.messages.at(-1);
+    if (lastMessage?.type === 'human' && isOffTopicRequest(lastMessage.text)) {
+      return { messages: [new AIMessage(scopeRefusal(detectLanguage(lastMessage.text)))] };
+    }
+
     const prompt = [
       { role: 'system', content: systemPrompt(deps.timeZone, channel) },
       ...compactHistory(history),
@@ -224,6 +232,11 @@ export function createAgent(deps: AgentDeps) {
       try {
         response = (await boundModels[tier].invoke(prompt)) as AIMessage;
         if (!isEmptyResponse(response)) {
+          // Backstop: a text reply containing code is replaced with the scope refusal
+          if (!response.tool_calls?.length && looksLikeCode(response.text)) {
+            const lastHuman = state.messages.findLast((m) => m.type === 'human');
+            return { messages: [new AIMessage(scopeRefusal(detectLanguage(lastHuman?.text ?? '')))] };
+          }
           return { messages: [response] };
         }
         reason = getFinishReason(response);
