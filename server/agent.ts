@@ -12,7 +12,7 @@ import { trimMessages, type BaseMessage } from '@langchain/core/messages';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { AIMessage, HumanMessage, ToolMessage } from 'langchain';
 import { initTools } from './tools.ts';
-import { isOffTopicRequest, looksLikeCode, scopeRefusal } from './guard.ts';
+import { isOffTopicRequest, isScopeRefusal, looksLikeCode, scopeRefusal } from './guard.ts';
 import type { Collections } from './db.ts';
 import { todayIn } from './dates.ts';
 import { formatPaise } from './money.ts';
@@ -233,7 +233,7 @@ export function createAgent(deps: AgentDeps) {
         response = (await boundModels[tier].invoke(prompt)) as AIMessage;
         if (!isEmptyResponse(response)) {
           // Backstop: a text reply containing code is replaced with the scope refusal
-          if (!response.tool_calls?.length && looksLikeCode(response.text)) {
+          if (!response.tool_calls?.length && (looksLikeCode(response.text) || isScopeRefusal(response.text))) {
             const lastHuman = state.messages.findLast((m) => m.type === 'human');
             return { messages: [new AIMessage(scopeRefusal(detectLanguage(lastHuman?.text ?? '')))] };
           }

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MemorySaver } from '@langchain/langgraph';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { AIMessage } from 'langchain';
-import { isOffTopicRequest, looksLikeCode, scopeRefusal } from '../guard.ts';
+import { isOffTopicRequest, isScopeRefusal, looksLikeCode, scopeRefusal } from '../guard.ts';
 import { createAgent, runConfig, userMessage } from '../agent.ts';
 import type { Database } from '../db.ts';
 import { createTestUser, startTestDatabase } from './helpers.ts';
@@ -118,5 +118,13 @@ describe('agent scope enforcement', () => {
     );
     expect(light.calls).toBe(1);
     expect(result.messages.at(-1)!.text).toBe(scopeRefusal('english'));
+  });
+});
+
+describe('isScopeRefusal', () => {
+  it('recognises the model writing its own refusal in either language', () => {
+    expect(isScopeRefusal('I can only help with your expenses: logging them.')).toBe(true);
+    expect(isScopeRefusal('Main sirf aapke kharche mein madad kar sakta hoon.')).toBe(true);
+    expect(isScopeRefusal('✅ ₹150 added (Food ₹150)')).toBe(false);
   });
 });

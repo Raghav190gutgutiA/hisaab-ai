@@ -5,7 +5,7 @@ import type { AppConfig } from '../config.ts';
 import { requireAuth } from '../auth.ts';
 import { runConfig, userMessage, type Agent, type RunContext } from '../agent.ts';
 import { userFacingError } from '../llm.ts';
-import { looksLikeCode, scopeRefusal } from '../guard.ts';
+import { isScopeRefusal, looksLikeCode, scopeRefusal } from '../guard.ts';
 import { detectLanguage } from '../language.ts';
 import { expenseFormatSchema, type UserService } from '../services/users.ts';
 import type { StreamMessage } from '../types.ts';
@@ -84,8 +84,9 @@ async function streamRun(
           const key: string = message.id ?? 'current';
           const soFar = (streamedText.get(key) ?? '') + text;
           streamedText.set(key, soFar);
-          if (looksLikeCode(soFar)) {
-            // Off-topic reply: swap what was shown for the refusal and stop
+          if (looksLikeCode(soFar) || isScopeRefusal(soFar)) {
+            // Off-topic reply: swap what was shown for the fixed refusal, in
+            // the user's language, and stop
             replaced = true;
             writeEvent(res, eventType, {
               type: 'ai:replace',

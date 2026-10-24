@@ -37,6 +37,14 @@ export function looksLikeCode(text: string): boolean {
   );
 }
 
+/**
+ * True when the model wrote its own version of the scope refusal. It gets
+ * swapped for the fixed text so the language always matches the user.
+ */
+export function isScopeRefusal(text: string): boolean {
+  return /can only help with your expenses|sirf aapke kharche mein madad/i.test(text);
+}
+
 export function scopeRefusal(language: ReplyLanguage): string {
   return language === 'hinglish'
     ? 'Main sirf aapke kharche mein madad kar sakta hoon: expense add karna, hisaab dekhna aur analysis. Jaise: "chai 20, auto 80" ya "is mahine ka hisaab dikhao".'
