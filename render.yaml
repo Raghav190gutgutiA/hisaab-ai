@@ -1,0 +1,49 @@
+# Render Blueprint for the Hisaab.ai API (free plan).
+# Secret values are never stored here: keys marked `sync: false` are
+# entered in the Render dashboard (or via the API) when the Blueprint is applied.
+services:
+  - type: web
+    name: hisaab-ai-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    # --prod=false installs devDependencies (TypeScript) even though NODE_ENV=production.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # Skip downloading a MongoDB binary for tests during the build
+      - key: MONGOMS_DISABLE_POSTINSTALL
+        value: "1"
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: TELEGRAM_MODE
+        value: webhook
+      - key: APP_FRONTEND_URL
+        sync: false
+      - key: APP_BACKEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_LIGHT_MODEL
+        value: gemini-3.5-flash-lite
+      - key: GEMINI_MID_MODEL
+        value: gemini-3.6-flash
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false

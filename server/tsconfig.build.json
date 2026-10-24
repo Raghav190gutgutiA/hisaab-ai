@@ -1,0 +1,14 @@
+{
+  // Production build: compiles to dist/ so Render runs plain `node`.
+  // Relative ".ts" imports are rewritten to ".js" in the output.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "vitest.config.ts"]
+}
