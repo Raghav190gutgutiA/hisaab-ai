@@ -23,6 +23,9 @@ import {
   chartText,
   detectLanguage,
   expensesText,
+  budgetAlertText,
+  budgetStatusText,
+  noBudgetText,
   type ReplyLanguage,
 } from './language.ts';
 import {
@@ -42,6 +45,7 @@ const TERMINAL_RESULT_TYPES = new Set([
   'chart',
   'expenses',
   'expenses_added',
+  'budget',
   'cancelled',
 ]);
 
@@ -127,6 +131,7 @@ function systemPrompt(timeZone: string, channel: Channel) {
 SCOPE: you ONLY help with the user's own expenses in Hisaab.ai: logging, viewing, analysing, and budgeting tips about their spending. For anything else (writing or explaining code in any language, general knowledge, news, people, homework, maths unrelated to their expenses, jokes, stories, other apps) do not answer it at all, not even partly. Instead reply only with: "I can only help with your expenses: logging them, showing your spending and analysing it." (in Hinglish: "Main sirf aapke kharche mein madad kar sakta hoon: expense add karna, hisaab dekhna aur analysis."). Never output code.
 Today is ${todayIn(timeZone)} (${timeZone}). Amounts are in rupees (₹). Categories: ${CATEGORIES.join(', ')}.
 Tools:
+- set_budget / get_budget_status: set or check the monthly budget ("mera budget 20000 set karo", "budget kitna bacha?"). Budgets are part of expense tracking.
 - add_expenses: log expenses. Put every item from one message into one call. Keep repeated items as separate entries ("momos 200, momos 200" is two expenses); never merge or drop them.
 - show_expenses: when the user wants to see/list their expenses (e.g. "show today's expenses", "is mahine ka hisaab"). Pass categories to filter (e.g. "food ka table" -> categories ["Food"], format "table"; "food aur travel ka json" -> ["Food","Travel"], "json"). Pass format only if the user names table, JSON or chart.
 - generate_expense_chart: for weekly or monthly charts, optionally with categories.
@@ -146,8 +151,17 @@ export function terminalReply(
   language: ReplyLanguage = 'english'
 ): string {
   switch (result.type) {
-    case 'expenses_added':
-      return `✅ ${addedText(language, result.totalPaise, describeCategoryTotals(result.byCategory))}`;
+    case 'expenses_added': {
+      const added = `✅ ${addedText(language, result.totalPaise, describeCategoryTotals(result.byCategory))}`;
+      const alert = result.budgetAlert;
+      return alert ? `${added}\n\n${budgetAlertText(language, alert.level, alert.status)}` : added;
+    }
+    case 'budget':
+      if (result.action === 'cleared') {
+        return language === 'hinglish' ? 'Theek hai, monthly budget hata diya.' : 'Done, your monthly budget is removed.';
+      }
+      if (!result.status) return noBudgetText(language);
+      return `${result.action === 'set' ? '✅ ' : ''}${budgetStatusText(language, result.status)}`;
     case 'expenses':
       return expensesText(language, result.summary);
     case 'chart':

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Send, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import type { User } from '../type.ts';
+import { BudgetSettings } from './BudgetSettings.tsx';
 
 type Status = Awaited<ReturnType<typeof api.telegramStatus>>;
 
@@ -73,7 +74,7 @@ export function SettingsPanel({
       <div
         role="dialog"
         aria-label="Settings"
-        className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-6"
+        className="w-full max-w-md max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-6"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-zinc-100">Settings</h2>
@@ -87,6 +88,8 @@ export function SettingsPanel({
           <div className="text-zinc-100">{user.name}</div>
           <div className="text-sm text-zinc-500">{user.email}</div>
         </section>
+
+        <BudgetSettings />
 
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-zinc-100 font-medium">

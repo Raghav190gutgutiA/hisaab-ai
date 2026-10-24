@@ -6,6 +6,7 @@ import { createChatModel } from './llm.ts';
 import { createApp } from './app.ts';
 import { createExpenseService } from './services/expenses.ts';
 import { createUserService } from './services/users.ts';
+import { createBudgetService } from './services/budget.ts';
 import { createTelegramLinkService } from './services/telegramLink.ts';
 import { createBot, startBot, type HisaabBot } from './telegram/bot.ts';
 
@@ -50,6 +51,7 @@ async function main() {
       links: createTelegramLinkService(database.collections),
       expenses: createExpenseService(database.collections),
       users: createUserService(database.collections),
+      budget: createBudgetService(database.collections, config.APP_TIMEZONE),
       getAgent,
       updates: database.collections.telegramUpdates,
     });

@@ -18,8 +18,10 @@ import {
 } from './services/users.ts';
 import { todayIn } from './dates.ts';
 import { computeAnalysis, previousPeriod } from './services/analysis.ts';
+import { createBudgetService } from './services/budget.ts';
 import { formatPaise, paiseToRupees, rupeesToPaise } from './money.ts';
 import type {
+  BudgetResult,
   Channel,
   ExpensesAddedResult,
   ExpensesResult,
@@ -84,6 +86,7 @@ const rangeShape = {
 export function initTools(collections: Collections, timeZone: string) {
   const expenseService = createExpenseService(collections);
   const userService = createUserService(collections);
+  const budgetService = createBudgetService(collections, timeZone);
 
   /**
    * Add one or more expenses in a single call
@@ -115,6 +118,9 @@ export function initTools(collections: Collections, timeZone: string) {
         byCategory: summary.byCategory,
         summary: `${formatPaise(summary.totalPaise)} added (${describeCategoryTotals(summary.byCategory)})`,
       };
+      // Warn once per month when spending first reaches 80% / 100% of the budget
+      const budgetAlert = await budgetService.checkAfterSpend(userId);
+      if (budgetAlert) result.budgetAlert = budgetAlert;
       return JSON.stringify(result);
     },
     {
@@ -302,5 +308,55 @@ export function initTools(collections: Collections, timeZone: string) {
     }
   );
 
-  return [addExpenses, getExpenses, showExpenses, generateChart, analyzeExpenses];
+  /**
+   * Set, change or remove the monthly budget
+   */
+  const setBudget = tool(
+    async ({ amount }, config): Promise<string> => {
+      const { userId } = getToolContext(config);
+      if (amount === 0) {
+        await budgetService.clearBudget(userId);
+        const result: BudgetResult = { type: 'budget', action: 'cleared', status: null };
+        return JSON.stringify(result);
+      }
+      const status = await budgetService.setBudget(userId, rupeesToPaise(amount));
+      const result: BudgetResult = { type: 'budget', action: 'set', status };
+      return JSON.stringify(result);
+    },
+    {
+      name: 'set_budget',
+      description:
+        'Set or change the user\'s monthly spending budget (e.g. "mera budget 20000 set karo"). Use amount 0 to remove the budget.',
+      schema: z.object({
+        amount: z
+          .number()
+          .min(0)
+          .max(10_000_000)
+          .describe('Monthly budget in rupees, e.g. 20000; 0 removes the budget'),
+      }),
+    }
+  );
+
+  /**
+   * How much of this month's budget is used and left
+   */
+  const getBudgetStatus = tool(
+    async (_input, config): Promise<string> => {
+      const { userId } = getToolContext(config);
+      const result: BudgetResult = {
+        type: 'budget',
+        action: 'status',
+        status: await budgetService.getStatus(userId),
+      };
+      return JSON.stringify(result);
+    },
+    {
+      name: 'get_budget_status',
+      description:
+        'Show the monthly budget: how much is spent, how much is left and the daily allowance (e.g. "budget kitna bacha?").',
+      schema: z.object({}),
+    }
+  );
+
+  return [addExpenses, getExpenses, showExpenses, generateChart, analyzeExpenses, setBudget, getBudgetStatus];
 }

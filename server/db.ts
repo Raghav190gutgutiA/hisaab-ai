@@ -26,7 +26,12 @@ export type ExpenseDoc = {
 export type UserPreferenceDoc = {
   _id: ObjectId;
   user_id: ObjectId;
-  expense_format: 'table' | 'json' | 'chart';
+  expense_format?: 'table' | 'json' | 'chart';
+  /** Monthly spending budget in paise */
+  monthly_budget_paise?: number | Long;
+  /** Budget alerts already sent (80 / 100) for budget_alert_month (YYYY-MM) */
+  budget_alert_month?: string;
+  budget_alert_levels?: number[];
   updated_at: Date;
 };
 

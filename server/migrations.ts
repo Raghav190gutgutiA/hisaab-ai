@@ -15,7 +15,14 @@ async function ensureCollection(db: Db, name: string, schema: Document) {
   const validator = { $jsonSchema: schema };
 
   if (exists) {
-    await db.command({ collMod: name, validator, validationLevel: 'strict' });
+    try {
+      await db.command({ collMod: name, validator, validationLevel: 'strict' });
+    } catch (error) {
+      // Database users with only readWrite (e.g. a default Atlas user) may not
+      // run collMod. Validators only tighten checks, so carry on without it.
+      if ((error as { code?: number }).code !== 13) throw error;
+      console.warn(`Skipped updating the validator for "${name}": the database user lacks the collMod permission.`);
+    }
   } else {
     await db.createCollection(name, { validator, validationLevel: 'strict' });
   }
@@ -116,6 +123,25 @@ export const migrations: Migration[] = [
       await db
         .collection('telegram_updates')
         .createIndex({ received_at: 1 }, { expireAfterSeconds: 2 * 24 * 60 * 60 });
+    },
+  },
+  {
+    name: '004_monthly_budget',
+    async up(db) {
+      // user_preferences(monthly_budget_paise, budget_alert_month, budget_alert_levels):
+      // the monthly budget, and which alerts (80% / 100%) were sent this month
+      await ensureCollection(db, 'user_preferences', {
+        bsonType: 'object',
+        required: ['user_id', 'updated_at'],
+        properties: {
+          user_id: { bsonType: 'objectId' },
+          expense_format: { enum: ['table', 'json', 'chart'] },
+          monthly_budget_paise: { bsonType: ['int', 'long'], minimum: 1 },
+          budget_alert_month: { bsonType: 'string', pattern: '^\\d{4}-\\d{2}$' },
+          budget_alert_levels: { bsonType: 'array', items: { enum: [80, 100] } },
+          updated_at: { bsonType: 'date' },
+        },
+      });
     },
   },
 ];

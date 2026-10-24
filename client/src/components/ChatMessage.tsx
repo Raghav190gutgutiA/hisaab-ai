@@ -3,6 +3,7 @@ import type { ExpenseFormat, StreamMessage } from '../type.ts';
 import { ExpenseChart } from './ExpenseChart.tsx';
 import { ExpenseView } from './ExpenseView.tsx';
 import { AnalysisCard, type ExpenseAnalysis } from './AnalysisCard.tsx';
+import { BudgetAlertBanner, BudgetCard, type BudgetStatus } from './BudgetCard.tsx';
 import { FormatPicker } from './FormatPicker.tsx';
 import { Logo } from './Logo.tsx';
 import { formatPaise } from '../lib/format.ts';
@@ -134,15 +135,33 @@ export function ChatMessage({ message, busy, onPickFormat }: Props) {
           <div className="shrink-0">
             <ToolResultIcon />
           </div>
-          <div className="flex-1 max-w-md rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
-            {result.items.map((item: { id: string; title: string; category: string; amountPaise: number }) => (
-              <div key={item.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-zinc-200">
-                  {item.title} <span className="text-xs text-zinc-500">· {item.category}</span>
-                </span>
-                <span className="text-zinc-100 tabular-nums">{formatPaise(item.amountPaise)}</span>
-              </div>
-            ))}
+          <div className="flex-1 space-y-2">
+            <div className="max-w-md rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
+              {result.items.map((item: { id: string; title: string; category: string; amountPaise: number }) => (
+                <div key={item.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <span className="text-zinc-200">
+                    {item.title} <span className="text-xs text-zinc-500">· {item.category}</span>
+                  </span>
+                  <span className="text-zinc-100 tabular-nums">{formatPaise(item.amountPaise)}</span>
+                </div>
+              ))}
+            </div>
+            {result.budgetAlert && (
+              <BudgetAlertBanner level={result.budgetAlert.level} status={result.budgetAlert.status as BudgetStatus} />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (result.type === 'budget') {
+      return (
+        <div className="flex gap-4 py-4 px-6">
+          <div className="shrink-0">
+            <ToolResultIcon />
+          </div>
+          <div className="flex-1">
+            <BudgetCard status={result.status as BudgetStatus | null} action={result.action} />
           </div>
         </div>
       );

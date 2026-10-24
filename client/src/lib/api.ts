@@ -1,5 +1,6 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import type { ExpenseFormat, StreamEvent, User } from '../type.ts';
+import type { BudgetStatus } from '../components/BudgetCard.tsx';
 
 /**
  * Reads VITE_API_URL, tolerating stray whitespace or a byte-order mark
@@ -120,6 +121,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ expenseFormat }),
     }),
+
+  getBudget: () => request<{ status: BudgetStatus | null }>('/budget'),
+  setBudget: (amount: number) =>
+    request<{ status: BudgetStatus }>('/budget', { method: 'PUT', body: JSON.stringify({ amount }) }),
+  clearBudget: () => request<{ status: null }>('/budget', { method: 'DELETE' }),
 
   telegramStatus: () =>
     request<{

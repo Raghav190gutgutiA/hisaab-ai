@@ -71,3 +71,77 @@ export function chartText(language: ReplyLanguage, categories: string[]): string
 export function cancelledText(language: ReplyLanguage): string {
   return language === 'hinglish' ? 'Theek hai, cancel kar diya.' : 'Okay, cancelled.';
 }
+
+type BudgetNumbers = {
+  month: string;
+  budgetPaise: number;
+  spentPaise: number;
+  remainingPaise: number;
+  usedPct: number;
+  daysLeft: number;
+  dailyAllowancePaise: number;
+  topFlexible: { category: string; totalPaise: number } | null;
+};
+
+function monthName(month: string): string {
+  return new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', timeZone: 'UTC' });
+}
+
+const days = (n: number, hi: boolean) => (hi ? `${n} din` : `${n} ${n === 1 ? 'day' : 'days'}`);
+
+/** Where to cut back: the biggest flexible category this month. */
+function cutTip(status: BudgetNumbers, hi: boolean): string {
+  if (!status.topFlexible) return '';
+  const { category, totalPaise } = status.topFlexible;
+  return hi
+    ? ` Is mahine sabse zyada ${category} pe gaya (${formatPaise(totalPaise)}), wahi kam karna sabse aasaan hoga.`
+    : ` ${category} is your biggest flexible spend this month (${formatPaise(totalPaise)}), so that's the easiest place to cut back.`;
+}
+
+/** Warning sent when spending first reaches 80% or 100% of the budget. */
+export function budgetAlertText(language: ReplyLanguage, level: 80 | 100, status: BudgetNumbers): string {
+  const hi = language === 'hinglish';
+  const budget = formatPaise(status.budgetPaise);
+  const spent = formatPaise(status.spentPaise);
+  const month = monthName(status.month);
+
+  if (level === 100) {
+    const over = formatPaise(-status.remainingPaise);
+    return hi
+      ? `🚨 Aapka ${month} ka ${budget} budget cross ho gaya: ${spent} kharch ho chuke hain${status.remainingPaise < 0 ? ` (${over} zyada)` : ''}. Bache hue ${days(status.daysLeft, true)} sirf zaroori cheezon pe kharch karne ki koshish karein.${cutTip(status, true)}`
+      : `🚨 You've crossed your ${budget} budget for ${month}: ${spent} spent${status.remainingPaise < 0 ? ` (${over} over)` : ''}. For the remaining ${days(status.daysLeft, false)}, try to stick to essentials.${cutTip(status, false)}`;
+  }
+
+  const left = formatPaise(status.remainingPaise);
+  const perDay = formatPaise(status.dailyAllowancePaise);
+  return hi
+    ? `⚠️ ${month} ka ${Math.floor(status.usedPct)}% budget use ho gaya (${spent} / ${budget}). Ab ${days(status.daysLeft, true)} ke liye ${left} bache hain, yaani roz lagbhag ${perDay}.${cutTip(status, true)}`
+    : `⚠️ You've used ${Math.floor(status.usedPct)}% of your ${budget} budget for ${month} (${spent}). ${left} is left for ${days(status.daysLeft, false)}, about ${perDay} a day.${cutTip(status, false)}`;
+}
+
+/** Budget status, e.g. after setting it or when the user asks. */
+export function budgetStatusText(language: ReplyLanguage, status: BudgetNumbers): string {
+  const hi = language === 'hinglish';
+  const budget = formatPaise(status.budgetPaise);
+  const spent = formatPaise(status.spentPaise);
+  const month = monthName(status.month);
+  const pct = Math.floor(status.usedPct);
+
+  if (status.remainingPaise < 0) {
+    const over = formatPaise(-status.remainingPaise);
+    return hi
+      ? `${month} ka budget ${budget} hai. Aap ${spent} kharch kar chuke hain, yaani ${over} zyada.${cutTip(status, true)}`
+      : `Your ${month} budget is ${budget}. You've spent ${spent}, which is ${over} over.${cutTip(status, false)}`;
+  }
+  const left = formatPaise(status.remainingPaise);
+  const perDay = formatPaise(status.dailyAllowancePaise);
+  return hi
+    ? `${month} ka budget ${budget} hai. ${spent} kharch hua (${pct}%), ${left} bache hain: ${days(status.daysLeft, true)} ke liye roz lagbhag ${perDay}.`
+    : `Your ${month} budget is ${budget}. You've spent ${spent} (${pct}%), with ${left} left: about ${perDay} a day for the next ${days(status.daysLeft, false)}.`;
+}
+
+export function noBudgetText(language: ReplyLanguage): string {
+  return language === 'hinglish'
+    ? 'Abhi koi monthly budget set nahi hai. Set karne ke liye likhein: "mera monthly budget 20000 set karo".'
+    : 'You have no monthly budget yet. Set one with: "set my monthly budget to 20000".';
+}

@@ -4,7 +4,7 @@ import { Bot, type Context } from 'grammy';
 import { MongoServerError, type Collection } from 'mongodb';
 import type { AppConfig } from '../config.ts';
 import type { TelegramUpdateDoc } from '../db.ts';
-import { parseToolResult, type Agent } from '../agent.ts';
+import { parseToolResult, terminalReply, type Agent } from '../agent.ts';
 import { userFacingError } from '../llm.ts';
 import { monthRange, todayIn } from '../dates.ts';
 import { summarize, type ExpenseService } from '../services/expenses.ts';
@@ -12,7 +12,8 @@ import { maskEmail, type TelegramLinkService } from '../services/telegramLink.ts
 import type { UserService } from '../services/users.ts';
 import type { ExpensesAddedResult, ExpensesResult } from '../types.ts';
 import type { ExpenseAnalysis } from '../services/analysis.ts';
-import { detectLanguage } from '../language.ts';
+import { budgetAlertText, budgetStatusText, detectLanguage, noBudgetText } from '../language.ts';
+import type { BudgetService } from '../services/budget.ts';
 import {
   describeAnalysis,
   describeExpenses,
@@ -29,6 +30,7 @@ export type BotDeps = {
   links: TelegramLinkService;
   expenses: ExpenseService;
   users: UserService;
+  budget: BudgetService;
   getAgent: () => Agent;
   /** Seen update_ids, used to drop Telegram's retried deliveries */
   updates: Collection<TelegramUpdateDoc>;
@@ -78,7 +80,14 @@ export function buildTurnReplies(
     if (message.type !== 'tool') continue;
     const result = parseToolResult(message as never);
     if (result?.type === 'expenses_added') {
-      replies.push(formatAddedConfirmation(result as ExpensesAddedResult, language));
+      const added = result as ExpensesAddedResult;
+      replies.push(formatAddedConfirmation(added, language));
+      // Budget warning (80% / 100%) as its own message so it stands out
+      if (added.budgetAlert) {
+        replies.push(escapeHtml(budgetAlertText(language, added.budgetAlert.level, added.budgetAlert.status)));
+      }
+    } else if (result?.type === 'budget') {
+      replies.push(escapeHtml(terminalReply(result, language)));
     } else if (result?.type === 'expenses') {
       const { expenses, summary } = result as ExpensesResult;
       replies.push(describeExpenses(expenses, summary, language, dashboardUrl));
@@ -263,6 +272,11 @@ export function createBot(deps: BotDeps) {
 
   bot.command('month', (ctx) => sendExpenses(ctx, monthRange(config.APP_TIMEZONE)));
 
+  bot.command('budget', async (ctx) => {
+    const status = await deps.budget.getStatus(ctx.userId!);
+    await ctx.reply(escapeHtml(status ? budgetStatusText('english', status) : noBudgetText('english')));
+  });
+
   // Format buttons from older messages: Telegram replies are text-only now
   bot.callbackQuery(/^fmt:/, (ctx) =>
     ctx.answerCallbackQuery({ text: 'Open the web dashboard for tables and charts.' })
@@ -306,6 +320,7 @@ export function verifyTelegramSecret(secret: string) {
 export const BOT_COMMANDS = [
   { command: 'today', description: "Today's expenses" },
   { command: 'month', description: "This month's expenses" },
+  { command: 'budget', description: 'Monthly budget: spent and left' },
   { command: 'link', description: 'Link this chat: /link <code>' },
   { command: 'help', description: 'How to use Hisaab.ai' },
 ];

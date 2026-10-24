@@ -4,6 +4,7 @@ import type {
   ExpenseSummary,
 } from './services/expenses.ts';
 import type { ExpenseFormat } from './services/users.ts';
+import type { BudgetAlert, BudgetStatus } from './services/budget.ts';
 
 export type Channel = 'web' | 'telegram';
 
@@ -28,6 +29,15 @@ export type ExpensesAddedResult = {
   totalPaise: number;
   byCategory: CategoryTotal[];
   summary: string;
+  /** Set the first time this month's spending reaches 80% or 100% of the budget */
+  budgetAlert?: BudgetAlert;
+};
+
+export type BudgetResult = {
+  type: 'budget';
+  action: 'set' | 'status' | 'cleared';
+  /** null when no budget is set */
+  status: BudgetStatus | null;
 };
 
 // Discriminated unions
