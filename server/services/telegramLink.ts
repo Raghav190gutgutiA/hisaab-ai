@@ -16,6 +16,17 @@ export type LinkResult =
   | { ok: true; userId: string }
   | { ok: false; reason: 'invalid' | 'expired' };
 
+export type LinkInspection =
+  | { ok: true; userId: string; /** account this chat is linked to now */ currentUserId: string | null }
+  | { ok: false; reason: 'invalid' | 'expired' };
+
+/** "raghav@gmail.com" -> "r*****@gmail.com", so a chat never shows a full address. */
+export function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  return `${local.slice(0, 1)}${'*'.repeat(Math.max(local.length - 1, 3))}@${domain}`;
+}
+
 export function createTelegramLinkService(
   { telegramLinkCodes, telegramAccounts }: Collections,
   now: () => Date = () => new Date()
@@ -40,6 +51,26 @@ export function createTelegramLinkService(
     });
 
     return { code, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Checks a code without using it up, so the bot can ask before moving a
+   * chat that is already linked to a different account.
+   */
+  async function inspectLinkCode(code: string, chatId: string): Promise<LinkInspection> {
+    const trimmed = code.trim();
+    if (!LINK_CODE_PATTERN.test(trimmed)) return { ok: false, reason: 'invalid' };
+
+    const doc = await telegramLinkCodes.findOne({ code: hashCode(trimmed) });
+    if (!doc) return { ok: false, reason: 'invalid' };
+    if (doc.expires_at <= now()) return { ok: false, reason: 'expired' };
+
+    const current = await telegramAccounts.findOne({ chat_id: chatId });
+    return {
+      ok: true,
+      userId: doc.user_id.toHexString(),
+      currentUserId: current?.user_id.toHexString() ?? null,
+    };
   }
 
   /**
@@ -98,6 +129,7 @@ export function createTelegramLinkService(
 
   return {
     createLinkCode,
+    inspectLinkCode,
     consumeLinkCode,
     getUserIdByChat,
     getLinkedChats,

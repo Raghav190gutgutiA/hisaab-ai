@@ -8,7 +8,8 @@ import { parseToolResult, type Agent } from '../agent.ts';
 import { userFacingError } from '../llm.ts';
 import { monthRange, todayIn } from '../dates.ts';
 import { summarize, type ExpenseService } from '../services/expenses.ts';
-import type { TelegramLinkService } from '../services/telegramLink.ts';
+import { maskEmail, type TelegramLinkService } from '../services/telegramLink.ts';
+import type { UserService } from '../services/users.ts';
 import type { ExpensesAddedResult, ExpensesResult } from '../types.ts';
 import type { ExpenseAnalysis } from '../services/analysis.ts';
 import { detectLanguage } from '../language.ts';
@@ -27,6 +28,7 @@ export type BotDeps = {
   config: AppConfig;
   links: TelegramLinkService;
   expenses: ExpenseService;
+  users: UserService;
   getAgent: () => Agent;
   /** Seen update_ids, used to drop Telegram's retried deliveries */
   updates: Collection<TelegramUpdateDoc>;
@@ -101,7 +103,7 @@ export function buildTurnReplies(
 }
 
 export function createBot(deps: BotDeps) {
-  const { config, links, expenses } = deps;
+  const { config, links, expenses, users } = deps;
   const bot = new Bot<BotContext>(config.TELEGRAM_BOT_TOKEN!);
   const dashboardUrl = config.APP_FRONTEND_URL;
 
@@ -110,20 +112,61 @@ export function createBot(deps: BotDeps) {
     await ctx.reply(describeExpenses(list, summarize(list, range), 'english', dashboardUrl), TEXT_OPTIONS);
   }
 
-  async function linkChat(ctx: BotContext, code: string) {
+  /** Partly hidden email of an account, e.g. "r*****@gmail.com". */
+  async function accountLabel(userId: string): Promise<string> {
+    const user = await users.findById(userId);
+    return user ? maskEmail(user.email) : 'your Hisaab.ai account';
+  }
+
+  const linkFailure = (reason: 'invalid' | 'expired') =>
+    reason === 'expired'
+      ? '⌛ This link code has expired. Generate a new one from the web app (codes last 10 minutes).'
+      : '❌ Invalid link code. Generate a new one from the web app and try again.';
+
+  /** Uses up the code and confirms which account the chat is now linked to. */
+  async function completeLink(ctx: BotContext, code: string, edit = false) {
     const result = await links.consumeLinkCode(code, String(ctx.chat!.id));
-    if (result.ok) {
-      await ctx.reply(
-        '✅ Telegram connected to your Hisaab.ai account!\n\nTry: <code>tea 20, taxi 80</code> or /today',
-        { parse_mode: 'HTML' }
-      );
-    } else {
-      await ctx.reply(
-        result.reason === 'expired'
-          ? '⌛ This link code has expired. Generate a new one from the web app (codes last 10 minutes).'
-          : '❌ Invalid link code. Generate a new one from the web app and try again.'
-      );
+    const text = result.ok
+      ? `✅ Telegram connected to <b>${escapeHtml(await accountLabel(result.userId))}</b>.\n\nTry: <code>tea 20, taxi 80</code> or /today`
+      : linkFailure(result.reason);
+    if (edit) await ctx.editMessageText(text, { parse_mode: 'HTML' }).catch(() => ctx.reply(text, { parse_mode: 'HTML' }));
+    else await ctx.reply(text, { parse_mode: 'HTML' });
+  }
+
+  /**
+   * Links the chat, but first asks for confirmation when it is already
+   * linked to a different account, so expenses never silently start going
+   * to another account.
+   */
+  async function linkChat(ctx: BotContext, code: string) {
+    const check = await links.inspectLinkCode(code, String(ctx.chat!.id));
+    if (!check.ok) {
+      await ctx.reply(linkFailure(check.reason));
+      return;
     }
+    if (!check.currentUserId || check.currentUserId === check.userId) {
+      await completeLink(ctx, code);
+      return;
+    }
+
+    const [current, next] = await Promise.all([accountLabel(check.currentUserId), accountLabel(check.userId)]);
+    await ctx.reply(
+      `⚠️ This chat is connected to <b>${escapeHtml(current)}</b>.\n\n` +
+        `Switch it to <b>${escapeHtml(next)}</b>? New expenses from Telegram will go to ${escapeHtml(next)}. ` +
+        `Expenses you already logged stay in ${escapeHtml(current)}.`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              // The code is safe here: only this chat sees the buttons, and it stays single-use
+              { text: `Yes, switch`, callback_data: `link:yes:${code.trim()}` },
+              { text: `No, keep ${current}`, callback_data: 'link:no' },
+            ],
+          ],
+        },
+      }
+    );
   }
 
   /** Runs one message through the shared agent and sends the replies. */
@@ -164,10 +207,29 @@ export function createBot(deps: BotDeps) {
     const linked = await links.getUserIdByChat(String(ctx.chat.id));
     await ctx.reply(
       linked
-        ? `👋 Welcome back to Hisaab.ai!\n\n${HELP_TEXT}`
+        ? `👋 Welcome back! This chat is connected to <b>${escapeHtml(await accountLabel(linked))}</b>.\n\n${HELP_TEXT}`
         : `👋 Welcome to Hisaab.ai!\n\n${unlinkedText(config.APP_FRONTEND_URL)}`,
       { parse_mode: 'HTML' }
     );
+  });
+
+  // Answer to "switch this chat to another account?"
+  bot.callbackQuery(/^link:(yes|no)(?::([A-Za-z0-9_-]{16,64}))?$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const [, answer, code] = ctx.match as RegExpMatchArray;
+    if (answer === 'yes' && code) {
+      await completeLink(ctx, code, true);
+    } else {
+      const current = await links.getUserIdByChat(String(ctx.chat!.id));
+      await ctx
+        .editMessageText(
+          current
+            ? `👍 Kept this chat connected to <b>${escapeHtml(await accountLabel(current))}</b>.`
+            : '👍 Okay, nothing changed.',
+          { parse_mode: 'HTML' }
+        )
+        .catch(() => {});
+    }
   });
 
   bot.command('link', async (ctx) => {
