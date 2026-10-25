@@ -20,7 +20,10 @@ async function ensureCollection(db: Db, name: string, schema: Document) {
     } catch (error) {
       // Database users with only readWrite (e.g. a default Atlas user) may not
       // run collMod. Validators only tighten checks, so carry on without it.
-      if ((error as { code?: number }).code !== 13) throw error;
+      // MongoDB reports this as code 13 (Unauthorized); Atlas as 8000 (AtlasError).
+      const { code, message = '' } = error as { code?: number; message?: string };
+      const notAllowed = code === 13 || (code === 8000 && /not allowed|not authorized/i.test(message));
+      if (!notAllowed) throw error;
       console.warn(`Skipped updating the validator for "${name}": the database user lacks the collMod permission.`);
     }
   } else {
