@@ -144,4 +144,15 @@ export const migrations: Migration[] = [
       });
     },
   },
+  {
+    name: '005_pending_deletes',
+    async up(db) {
+      // pending_deletes(_id = token, user_id, expense_ids, expires_at): a delete
+      // waiting for the user's confirmation. MongoDB removes expired ones.
+      const exists =
+        (await db.listCollections({ name: 'pending_deletes' }, { nameOnly: true }).toArray()).length > 0;
+      if (!exists) await db.createCollection('pending_deletes');
+      await db.collection('pending_deletes').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+    },
+  },
 ];

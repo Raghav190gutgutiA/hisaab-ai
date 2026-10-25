@@ -6,6 +6,7 @@ import { createExpenseService } from '../services/expenses.ts';
 import { createTelegramLinkService, maskEmail } from '../services/telegramLink.ts';
 import { createUserService } from '../services/users.ts';
 import { createBudgetService } from '../services/budget.ts';
+import { createRemovalService } from '../services/removal.ts';
 import type { Database } from '../db.ts';
 import { startTestDatabase } from './helpers.ts';
 
@@ -57,6 +58,11 @@ describe('bot: linking a chat that belongs to another account', () => {
       expenses: createExpenseService(database.collections),
       users: createUserService(database.collections),
       budget: createBudgetService(database.collections, 'Asia/Kolkata'),
+      removal: createRemovalService(
+        database.collections,
+        createExpenseService(database.collections),
+        createBudgetService(database.collections, 'Asia/Kolkata')
+      ),
       getAgent: () => {
         throw new Error('agent not needed');
       },

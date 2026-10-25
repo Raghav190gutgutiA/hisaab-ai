@@ -9,6 +9,7 @@ const STRONG_MARKERS = new Set([
   'hafte', 'hafta', 'aaj', 'kal', 'parso', 'mera', 'meri', 'mere', 'mujhe',
   'karo', 'kardo', 'hisaab', 'hisab', 'wala', 'wali', 'sirf', 'abhi', 'kaha',
   'kahan', 'kyun', 'nahi', 'haan', 'acha', 'accha', 'theek', 'jitna', 'kaisa',
+  'hata', 'hatao', 'hatado', 'mita', 'mitao', 'daal', 'daalo', 'dalo', 'chahiye', 'wapas',
 ]);
 
 // Common Hinglish particles that are too short to trust on their own
@@ -144,4 +145,41 @@ export function noBudgetText(language: ReplyLanguage): string {
   return language === 'hinglish'
     ? 'Abhi koi monthly budget set nahi hai. Set karne ke liye likhein: "mera monthly budget 20000 set karo".'
     : 'You have no monthly budget yet. Set one with: "set my monthly budget to 20000".';
+}
+
+type PreviewNumbers = {
+  matches: { title: string; amountPaise: number; spentOn: string }[];
+  totalPaise: number;
+  token: string | null;
+  tooMany: boolean;
+};
+
+const shortDate = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+
+/** Lists the expenses found for a delete request and asks for confirmation. */
+export function deletePreviewText(language: ReplyLanguage, preview: PreviewNumbers): string {
+  const hi = language === 'hinglish';
+  if (preview.tooMany) {
+    return hi
+      ? 'Bahut saare expenses match ho rahe hain. Thoda specific batayein, jaise date ya amount.'
+      : 'That matches too many expenses. Please be more specific, for example add a date or the amount.';
+  }
+  if (preview.matches.length === 0) {
+    return hi ? 'Aisa koi expense nahi mila.' : "I couldn't find a matching expense.";
+  }
+  const n = preview.matches.length;
+  const list = preview.matches
+    .map((e) => `${e.title} ${formatPaise(e.amountPaise)} (${shortDate(e.spentOn)})`)
+    .join(', ');
+  return hi
+    ? `${n} expense mile: ${list}. Delete karne ke liye neeche button dabayein.`
+    : `Found ${n} ${n === 1 ? 'expense' : 'expenses'}: ${list}. Tap Delete below to remove ${n === 1 ? 'it' : 'them'}.`;
+}
+
+/** Confirmation after the user tapped Delete. */
+export function deletedText(language: ReplyLanguage, count: number, totalPaise: number): string {
+  return language === 'hinglish'
+    ? `🗑 ${count} expense delete ho gaye (${formatPaise(totalPaise)}).`
+    : `🗑 Deleted ${count} ${count === 1 ? 'expense' : 'expenses'} (${formatPaise(totalPaise)}).`;
 }

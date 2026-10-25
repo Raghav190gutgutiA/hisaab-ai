@@ -10,10 +10,18 @@ import { monthRange, todayIn } from '../dates.ts';
 import { summarize, type ExpenseService } from '../services/expenses.ts';
 import { maskEmail, type TelegramLinkService } from '../services/telegramLink.ts';
 import type { UserService } from '../services/users.ts';
-import type { ExpensesAddedResult, ExpensesResult } from '../types.ts';
+import type { DeletePreviewResult, ExpensesAddedResult, ExpensesResult } from '../types.ts';
 import type { ExpenseAnalysis } from '../services/analysis.ts';
-import { budgetAlertText, budgetStatusText, detectLanguage, noBudgetText } from '../language.ts';
+import {
+  budgetAlertText,
+  budgetStatusText,
+  deletedText,
+  deletePreviewText,
+  detectLanguage,
+  noBudgetText,
+} from '../language.ts';
 import type { BudgetService } from '../services/budget.ts';
+import type { RemovalService } from '../services/removal.ts';
 import {
   describeAnalysis,
   describeExpenses,
@@ -31,6 +39,7 @@ export type BotDeps = {
   expenses: ExpenseService;
   users: UserService;
   budget: BudgetService;
+  removal: RemovalService;
   getAgent: () => Agent;
   /** Seen update_ids, used to drop Telegram's retried deliveries */
   updates: Collection<TelegramUpdateDoc>;
@@ -66,11 +75,14 @@ const TEXT_OPTIONS = {
  * text, so the numbers are exact. Every reply is natural language: lists
  * and analyses are written as sentences, never as tables or JSON.
  */
+/** A reply is text, optionally with inline buttons (used to confirm deletes). */
+export type TurnReply = string | { text: string; buttons: { text: string; callback_data: string }[][] };
+
 export function buildTurnReplies(
   messages: { type: string; text: string }[],
   dashboardUrl: string
-): string[] {
-  const replies: string[] = [];
+): TurnReply[] {
+  const replies: TurnReply[] = [];
   const lastHuman = messages.findLast((m) => m.type === 'human');
   const language = detectLanguage(lastHuman?.text ?? '');
   // Analysis is followed by the model's written insights
@@ -86,6 +98,23 @@ export function buildTurnReplies(
       if (added.budgetAlert) {
         replies.push(escapeHtml(budgetAlertText(language, added.budgetAlert.level, added.budgetAlert.status)));
       }
+    } else if (result?.type === 'delete_preview') {
+      const preview = result as DeletePreviewResult;
+      const text = escapeHtml(deletePreviewText(language, preview));
+      const lang = language === 'hinglish' ? 'h' : 'e';
+      replies.push(
+        preview.token
+          ? {
+              text,
+              buttons: [
+                [
+                  { text: `🗑 Delete ${preview.matches.length}`, callback_data: `del:y:${lang}:${preview.token}` },
+                  { text: 'Cancel', callback_data: `del:n:${lang}:${preview.token}` },
+                ],
+              ],
+            }
+          : text
+      );
     } else if (result?.type === 'budget') {
       replies.push(escapeHtml(terminalReply(result, language)));
     } else if (result?.type === 'expenses') {
@@ -189,7 +218,11 @@ export function createBot(deps: BotDeps) {
         text.slice(0, 2000)
       );
       for (const reply of buildTurnReplies(messages, dashboardUrl)) {
-        await ctx.reply(reply, TEXT_OPTIONS);
+        if (typeof reply === 'string') {
+          await ctx.reply(reply, TEXT_OPTIONS);
+        } else {
+          await ctx.reply(reply.text, { ...TEXT_OPTIONS, reply_markup: { inline_keyboard: reply.buttons } });
+        }
       }
     } catch (error) {
       console.error('Telegram agent run failed:', error);
@@ -275,6 +308,29 @@ export function createBot(deps: BotDeps) {
   bot.command('budget', async (ctx) => {
     const status = await deps.budget.getStatus(ctx.userId!);
     await ctx.reply(escapeHtml(status ? budgetStatusText('english', status) : noBudgetText('english')));
+  });
+
+  // [Delete] / [Cancel] for a delete request; the token makes it single use
+  bot.callbackQuery(/^del:(y|n):(e|h):([A-Za-z0-9_-]{8,32})$/, async (ctx) => {
+    const [, answer, lang, token] = ctx.match as RegExpMatchArray;
+    const language = lang === 'h' ? 'hinglish' : 'english';
+    await ctx.answerCallbackQuery();
+
+    if (answer === 'n') {
+      await deps.removal.cancel(ctx.userId!, token);
+      await ctx.editMessageText(language === 'hinglish' ? '👍 Theek hai, kuch delete nahi kiya.' : '👍 Okay, nothing was deleted.').catch(() => {});
+      return;
+    }
+    const result = await deps.removal.confirm(ctx.userId!, token);
+    await ctx
+      .editMessageText(
+        result.ok
+          ? deletedText(language, result.deleted.length, result.totalPaise)
+          : language === 'hinglish'
+            ? '⌛ Yeh request expire ho gayi. Dobara likhein kya delete karna hai.'
+            : '⌛ That request expired. Please ask again.'
+      )
+      .catch(() => {});
   });
 
   // Format buttons from older messages: Telegram replies are text-only now

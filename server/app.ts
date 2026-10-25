@@ -11,6 +11,9 @@ import { createUserService } from './services/users.ts';
 import { createTelegramLinkService } from './services/telegramLink.ts';
 import { createBudgetService } from './services/budget.ts';
 import { createBudgetRouter } from './routes/budget.ts';
+import { createExpensesRouter } from './routes/expenses.ts';
+import { createRemovalService } from './services/removal.ts';
+import { createExpenseService } from './services/expenses.ts';
 import { verifyTelegramSecret, type HisaabBot } from './telegram/bot.ts';
 
 export type AppDeps = {
@@ -73,7 +76,10 @@ export function createApp({ config, database, getAgent, bot }: AppDeps) {
 
   app.use('/auth', createAuthRouter(config, users));
   app.use('/telegram', createTelegramRouter(config, links, () => bot));
-  app.use('/budget', createBudgetRouter(config, createBudgetService(database.collections, config.APP_TIMEZONE)));
+  const budget = createBudgetService(database.collections, config.APP_TIMEZONE);
+  const removal = createRemovalService(database.collections, createExpenseService(database.collections), budget);
+  app.use('/budget', createBudgetRouter(config, budget));
+  app.use('/expenses', createExpensesRouter(config, removal));
   app.use('/', createChatRouter(config, getAgent, users));
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

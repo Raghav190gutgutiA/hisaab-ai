@@ -1,5 +1,5 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-import type { ExpenseFormat, StreamEvent, User } from '../type.ts';
+import type { Expense, ExpenseFormat, StreamEvent, User } from '../type.ts';
 import type { BudgetStatus } from '../components/BudgetCard.tsx';
 
 /**
@@ -121,6 +121,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ expenseFormat }),
     }),
+
+  confirmDelete: (token: string) =>
+    request<{ deleted: Expense[]; totalPaise: number }>('/expenses/delete/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+  cancelDelete: (token: string) =>
+    request<{ ok: true }>('/expenses/delete/cancel', { method: 'POST', body: JSON.stringify({ token }) }),
+  deleteExpense: (id: string) => request<{ deleted: Expense }>(`/expenses/${id}`, { method: 'DELETE' }),
 
   getBudget: () => request<{ status: BudgetStatus | null }>('/budget'),
   setBudget: (amount: number) =>

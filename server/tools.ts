@@ -19,10 +19,12 @@ import {
 import { todayIn } from './dates.ts';
 import { computeAnalysis, previousPeriod } from './services/analysis.ts';
 import { createBudgetService } from './services/budget.ts';
+import { createRemovalService } from './services/removal.ts';
 import { formatPaise, paiseToRupees, rupeesToPaise } from './money.ts';
 import type {
   BudgetResult,
   Channel,
+  DeletePreviewResult,
   ExpensesAddedResult,
   ExpensesResult,
   FormatPickerInterrupt,
@@ -87,6 +89,7 @@ export function initTools(collections: Collections, timeZone: string) {
   const expenseService = createExpenseService(collections);
   const userService = createUserService(collections);
   const budgetService = createBudgetService(collections, timeZone);
+  const removalService = createRemovalService(collections, expenseService, budgetService);
 
   /**
    * Add one or more expenses in a single call
@@ -196,7 +199,7 @@ export function initTools(collections: Collections, timeZone: string) {
    * Pauses the run to ask for a format the first time (web only).
    */
   const showExpenses = tool(
-    async ({ from, to, categories, format: requested }, config): Promise<string> => {
+    async ({ from, to, categories, format: requested, chartType }, config): Promise<string> => {
       const { userId, channel } = getToolContext(config);
       const query = { from, to, categories };
       const decision = resolveFormat(
@@ -233,6 +236,7 @@ export function initTools(collections: Collections, timeZone: string) {
         format,
         expenses,
         summary,
+        ...(chartType && { chartType }),
       };
       return JSON.stringify(result);
     },
@@ -247,6 +251,10 @@ export function initTools(collections: Collections, timeZone: string) {
           .describe(
             'Only if the user explicitly asks for a table, JSON or chart; otherwise omit so their saved preference is used.'
           ),
+        chartType: z
+          .enum(['bar', 'pie'])
+          .optional()
+          .describe('With format "chart": "pie" for a category-wise pie chart, "bar" for daily bars.'),
       }),
     }
   );
@@ -358,5 +366,53 @@ export function initTools(collections: Collections, timeZone: string) {
     }
   );
 
-  return [addExpenses, getExpenses, showExpenses, generateChart, analyzeExpenses, setBudget, getBudgetStatus];
+  /**
+   * Find expenses to delete. Nothing is removed here: the user confirms
+   * with a Delete button (web or Telegram) that carries the returned token.
+   */
+  const deleteExpenses = tool(
+    async ({ title, category, amount, from, to, latest }, config): Promise<string> => {
+      const { userId } = getToolContext(config);
+      const preview = await removalService.preview(userId, {
+        title,
+        category,
+        amountPaise: amount === undefined ? undefined : rupeesToPaise(amount),
+        from,
+        to,
+        latest,
+      });
+      const result: DeletePreviewResult = { type: 'delete_preview', ...preview };
+      return JSON.stringify(result);
+    },
+    {
+      name: 'delete_expenses',
+      description:
+        'Find expenses the user wants to delete or remove ("last expense hata do", "delete today\'s taxi", "remove the 500 shopping one"). Describe them with filters; the user then confirms with a button. Never claim anything was deleted.',
+      schema: z.object({
+        title: z.string().trim().min(1).max(120).optional().describe('Words in the expense title, e.g. "taxi"'),
+        category: z.enum(CATEGORIES).optional(),
+        amount: z.number().min(0.01).max(10_000_000).optional().describe('Exact amount in rupees'),
+        from: isoDateSchema.optional().describe('Earliest date, YYYY-MM-DD'),
+        to: isoDateSchema.optional().describe('Latest date, YYYY-MM-DD'),
+        latest: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe('Only the N most recently logged expenses, e.g. 1 for "my last expense"'),
+      }),
+    }
+  );
+
+  return [
+    addExpenses,
+    getExpenses,
+    showExpenses,
+    generateChart,
+    analyzeExpenses,
+    setBudget,
+    getBudgetStatus,
+    deleteExpenses,
+  ];
 }

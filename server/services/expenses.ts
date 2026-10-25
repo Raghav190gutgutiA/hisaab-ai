@@ -56,6 +56,24 @@ export const newExpenseSchema = z.object({
 
 export type NewExpense = z.infer<typeof newExpenseSchema>;
 
+/** Which expenses to delete; at least one condition is required. */
+export const removalFilterSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    category: z.enum(CATEGORIES).optional(),
+    amountPaise: z.number().int().positive().optional(),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional(),
+    latest: z.number().int().min(1).max(20).optional(),
+  })
+  .refine((f) => Object.values(f).some((v) => v !== undefined), {
+    message: 'Say which expense to delete',
+  });
+
+export type RemovalFilter = z.infer<typeof removalFilterSchema>;
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export type Expense = {
   id: string;
   title: string;
@@ -170,7 +188,36 @@ export function createExpenseService({ expenses }: Collections) {
     }));
   }
 
-  return { addExpenses, listExpenses, aggregateByPeriod };
+  /**
+   * Expenses matching a delete request, newest first. Always scoped to the
+   * user; `latest` means the most recently logged ones.
+   */
+  async function findForRemoval(userId: string, filter: RemovalFilter, limit: number): Promise<Expense[]> {
+    const parsed = removalFilterSchema.parse(filter);
+    const query: Record<string, unknown> = { user_id: toObjectId(userId) };
+    if (parsed.title) query.title = { $regex: escapeRegex(parsed.title), $options: 'i' };
+    if (parsed.category) query.category = parsed.category;
+    if (parsed.amountPaise) query.amount_paise = parsed.amountPaise;
+    if (parsed.from || parsed.to) {
+      query.spent_on = { ...(parsed.from && { $gte: parsed.from }), ...(parsed.to && { $lte: parsed.to }) };
+    }
+    const docs = await expenses
+      .find(query)
+      .sort({ created_at: -1, _id: -1 })
+      .limit(parsed.latest ?? limit)
+      .toArray();
+    return docs.map(toExpense);
+  }
+
+  /** Deletes the given expenses, only if they belong to the user. */
+  async function removeByIds(userId: string, ids: ObjectId[]): Promise<Expense[]> {
+    const filter = { user_id: toObjectId(userId), _id: { $in: ids } };
+    const docs = await expenses.find(filter).toArray();
+    if (docs.length) await expenses.deleteMany(filter);
+    return docs.map(toExpense);
+  }
+
+  return { addExpenses, listExpenses, aggregateByPeriod, findForRemoval, removeByIds };
 }
 
 export type ExpenseService = ReturnType<typeof createExpenseService>;

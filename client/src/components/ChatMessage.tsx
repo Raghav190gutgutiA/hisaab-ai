@@ -4,6 +4,7 @@ import { ExpenseChart } from './ExpenseChart.tsx';
 import { ExpenseView } from './ExpenseView.tsx';
 import { AnalysisCard, type ExpenseAnalysis } from './AnalysisCard.tsx';
 import { BudgetAlertBanner, BudgetCard, type BudgetStatus } from './BudgetCard.tsx';
+import { DeleteConfirmCard } from './DeleteConfirmCard.tsx';
 import { FormatPicker } from './FormatPicker.tsx';
 import { Logo } from './Logo.tsx';
 import { formatPaise } from '../lib/format.ts';
@@ -110,7 +111,12 @@ export function ChatMessage({ message, busy, onPickFormat }: Props) {
             <ToolResultIcon />
           </div>
           <div className="flex-1 min-w-0">
-            <ExpenseView format={result.format} expenses={result.expenses} summary={result.summary} />
+            <ExpenseView
+              format={result.format}
+              expenses={result.expenses}
+              summary={result.summary}
+              chartType={result.chartType}
+            />
           </div>
         </div>
       );
@@ -149,6 +155,24 @@ export function ChatMessage({ message, busy, onPickFormat }: Props) {
             {result.budgetAlert && (
               <BudgetAlertBanner level={result.budgetAlert.level} status={result.budgetAlert.status as BudgetStatus} />
             )}
+          </div>
+        </div>
+      );
+    }
+
+    if (result.type === 'delete_preview') {
+      return (
+        <div className="flex gap-4 py-4 px-6">
+          <div className="shrink-0">
+            <ToolResultIcon />
+          </div>
+          <div className="flex-1">
+            <DeleteConfirmCard
+              matches={result.matches}
+              totalPaise={result.totalPaise}
+              token={result.token}
+              tooMany={result.tooMany}
+            />
           </div>
         </div>
       );

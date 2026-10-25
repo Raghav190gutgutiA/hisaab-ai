@@ -61,6 +61,15 @@ export type Collections = {
   telegramLinkCodes: Collection<TelegramLinkCodeDoc>;
   telegramAccounts: Collection<TelegramAccountDoc>;
   telegramUpdates: Collection<TelegramUpdateDoc>;
+  pendingDeletes: Collection<PendingDeleteDoc>;
+};
+
+/** Expenses the user was asked to confirm deleting; single use, expires */
+export type PendingDeleteDoc = {
+  _id: string; // random token carried by the Delete button
+  user_id: ObjectId;
+  expense_ids: ObjectId[];
+  expires_at: Date;
 };
 
 export type Database = {
@@ -77,6 +86,7 @@ export function getCollections(db: Db): Collections {
     telegramLinkCodes: db.collection<TelegramLinkCodeDoc>('telegram_link_codes'),
     telegramAccounts: db.collection<TelegramAccountDoc>('telegram_accounts'),
     telegramUpdates: db.collection<TelegramUpdateDoc>('telegram_updates'),
+    pendingDeletes: db.collection<PendingDeleteDoc>('pending_deletes'),
   };
 }
 

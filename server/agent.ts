@@ -26,6 +26,7 @@ import {
   budgetAlertText,
   budgetStatusText,
   noBudgetText,
+  deletePreviewText,
   type ReplyLanguage,
 } from './language.ts';
 import {
@@ -46,6 +47,7 @@ const TERMINAL_RESULT_TYPES = new Set([
   'expenses',
   'expenses_added',
   'budget',
+  'delete_preview',
   'cancelled',
 ]);
 
@@ -132,12 +134,13 @@ SCOPE: you ONLY help with the user's own expenses in Hisaab.ai: logging, viewing
 Today is ${todayIn(timeZone)} (${timeZone}). Amounts are in rupees (₹). Categories: ${CATEGORIES.join(', ')}.
 Tools:
 - set_budget / get_budget_status: set or check the monthly budget ("mera budget 20000 set karo", "budget kitna bacha?"). Budgets are part of expense tracking.
+- delete_expenses: when the user wants to delete/remove expenses ("last expense hata do" -> latest 1; "aaj ka taxi delete karo" -> title "taxi" with today's date). It only finds matches; the user confirms with a button.
 - add_expenses: log expenses. Put every item from one message into one call. Keep repeated items as separate entries ("momos 200, momos 200" is two expenses); never merge or drop them.
 - show_expenses: when the user wants to see/list their expenses (e.g. "show today's expenses", "is mahine ka hisaab"). Pass categories to filter (e.g. "food ka table" -> categories ["Food"], format "table"; "food aur travel ka json" -> ["Food","Travel"], "json"). Pass format only if the user names table, JSON or chart.
 - generate_expense_chart: for weekly or monthly charts, optionally with categories.
 - get_expenses: when you need data to answer a single question (a total, one biggest spend), optionally with categories.
 - analyze_expenses: for analysis, insights, breakdowns, trends or comparisons of one category, several, or all. The user already sees the numbers as a card, so reply with 3-5 short bullet insights (biggest category, change vs previous period, unusual spends, one practical tip). Amounts in the tool result ending in Paise are paise: divide by 100 for rupees.
-For "<category> ka chart" without a week/month grouping, use show_expenses with format "chart".${channel === 'telegram' ? `
+For "<category> ka chart" without a week/month grouping, use show_expenses with format "chart". For a pie chart or a category-wise split, use show_expenses with format "chart" and chartType "pie".${channel === 'telegram' ? `
 You are on Telegram: write plain natural sentences only. Never use tables, JSON, code blocks or markdown. For analysis, write the insights as 2-4 short sentences instead of bullets.` : ''}
 If an amount is missing or unclear, ask instead of guessing. Never invent expenses.`;
 }
@@ -156,6 +159,8 @@ export function terminalReply(
       const alert = result.budgetAlert;
       return alert ? `${added}\n\n${budgetAlertText(language, alert.level, alert.status)}` : added;
     }
+    case 'delete_preview':
+      return deletePreviewText(language, result as Parameters<typeof deletePreviewText>[1]);
     case 'budget':
       if (result.action === 'cleared') {
         return language === 'hinglish' ? 'Theek hai, monthly budget hata diya.' : 'Done, your monthly budget is removed.';

@@ -140,7 +140,21 @@ export function createBudgetService({ userPreferences, expenses }: Collections, 
     return result.modifiedCount === 1 ? { level, status } : null;
   }
 
-  return { getBudgetPaise, getStatus, setBudget, clearBudget, checkAfterSpend };
+  /**
+   * After expenses are deleted, forget alerts for levels no longer reached,
+   * so crossing them again later this month warns again.
+   */
+  async function recheckAfterRemoval(userId: string, now = new Date()) {
+    const status = await getStatus(userId, now);
+    if (!status) return;
+    const reached = reachedLevel(status.usedPct);
+    await userPreferences.updateOne(
+      { user_id: toObjectId(userId), budget_alert_month: status.month },
+      { $set: { budget_alert_levels: BUDGET_LEVELS.filter((level) => reached !== null && level <= reached) } }
+    );
+  }
+
+  return { getBudgetPaise, getStatus, setBudget, clearBudget, checkAfterSpend, recheckAfterRemoval };
 }
 
 export type BudgetService = ReturnType<typeof createBudgetService>;

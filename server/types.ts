@@ -21,6 +21,8 @@ export type ExpensesResult = {
   format: ExpenseFormat;
   expenses: Expense[];
   summary: ExpenseSummary;
+  /** Requested chart style when format is "chart" */
+  chartType?: 'bar' | 'pie';
 };
 
 export type ExpensesAddedResult = {
@@ -31,6 +33,15 @@ export type ExpensesAddedResult = {
   summary: string;
   /** Set the first time this month's spending reaches 80% or 100% of the budget */
   budgetAlert?: BudgetAlert;
+};
+
+export type DeletePreviewResult = {
+  type: 'delete_preview';
+  matches: Expense[];
+  totalPaise: number;
+  /** Carried by the Delete button; null when nothing can be confirmed */
+  token: string | null;
+  tooMany: boolean;
 };
 
 export type BudgetResult = {

@@ -50,6 +50,20 @@ export function toExpenseJson(expenses: Expense[], summary: ExpenseSummary) {
   };
 }
 
+/** Recomputes totals after rows were deleted, keeping the original range and filter. */
+export function summarizeExpenses(expenses: Expense[], base: ExpenseSummary): ExpenseSummary {
+  const totals = new Map<string, number>();
+  for (const e of expenses) totals.set(e.category, (totals.get(e.category) ?? 0) + e.amountPaise);
+  return {
+    ...base,
+    count: expenses.length,
+    totalPaise: expenses.reduce((sum, e) => sum + e.amountPaise, 0),
+    byCategory: [...totals.entries()]
+      .map(([category, totalPaise]) => ({ category, totalPaise }))
+      .sort((a, b) => b.totalPaise - a.totalPaise),
+  };
+}
+
 /** Daily totals in rupees for the bar chart. */
 export function toDailyChartData(expenses: Expense[]) {
   const totals = new Map<string, number>();

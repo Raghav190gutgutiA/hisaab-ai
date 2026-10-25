@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';
 import type { Expense } from '../type.ts';
 import { formatDate, formatPaise } from '../lib/format.ts';
 
@@ -15,10 +15,27 @@ const COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
 export function ExpenseTable({
   expenses,
   totalPaise,
+  onDelete,
 }: {
   expenses: Expense[];
   totalPaise: number;
+  /** When set, each row gets a delete button (asks for confirmation first) */
+  onDelete?: (expense: Expense) => Promise<void>;
 }) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleDelete(expense: Expense) {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete "${expense.title}" (${formatPaise(expense.amountPaise)})?`)) return;
+    setDeleting(expense.id);
+    try {
+      await onDelete(expense);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not delete. Please try again.');
+    } finally {
+      setDeleting(null);
+    }
+  }
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
     key: 'spentOn',
     dir: 'asc',
@@ -65,6 +82,11 @@ export function ExpenseTable({
                 </th>
               );
             })}
+            {onDelete && (
+              <th className="w-8">
+                <span className="sr-only">Delete</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -78,6 +100,19 @@ export function ExpenseTable({
                 </span>
               </td>
               <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(e.amountPaise)}</td>
+              {onDelete && (
+                <td className="pr-3 py-2.5 w-8">
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(e)}
+                    disabled={deleting === e.id}
+                    aria-label={`Delete ${e.title}`}
+                    title="Delete"
+                    className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -85,6 +120,7 @@ export function ExpenseTable({
           <tr className="border-t border-zinc-700 text-zinc-100 font-medium">
             <td className="px-4 py-3" colSpan={3}>Total</td>
             <td className="px-4 py-3 text-right tabular-nums">{formatPaise(totalPaise)}</td>
+            {onDelete && <td />}
           </tr>
         </tfoot>
       </table>

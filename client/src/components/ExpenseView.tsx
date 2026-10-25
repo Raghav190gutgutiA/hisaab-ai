@@ -1,30 +1,43 @@
 import { useState } from 'react';
 import type { Expense, ExpenseFormat, ExpenseSummary } from '../type.ts';
 import { api } from '../lib/api.ts';
-import { formatDate, formatPaise, toDailyChartData, toExpenseJson } from '../lib/format.ts';
+import { formatDate, formatPaise, summarizeExpenses, toDailyChartData, toExpenseJson } from '../lib/format.ts';
 import { ExpenseTable } from './ExpenseTable.tsx';
 import { JsonViewer } from './JsonViewer.tsx';
 import { ExpenseChart } from './ExpenseChart.tsx';
+import { CategoryPie } from './CategoryPie.tsx';
 import { FORMAT_OPTIONS } from '../lib/formatOptions.ts';
+
+type ChartType = 'bar' | 'pie';
 
 type Props = {
   format: ExpenseFormat;
   expenses: Expense[];
   summary: ExpenseSummary;
+  chartType?: ChartType;
 };
 
 /**
  * Renders a show_expenses result in the chosen format, with a small
- * switcher that also updates the saved preference.
+ * switcher that also updates the saved preference. Rows deleted from the
+ * table disappear here and the totals update.
  */
-export function ExpenseView({ format: initialFormat, expenses, summary }: Props) {
+export function ExpenseView({ format: initialFormat, expenses: initialExpenses, summary: initialSummary, chartType: initialChart }: Props) {
   const [format, setFormat] = useState(initialFormat);
+  const [chartType, setChartType] = useState<ChartType>(initialChart ?? 'bar');
+  const [expenses, setExpenses] = useState(initialExpenses);
+  const summary = expenses === initialExpenses ? initialSummary : summarizeExpenses(expenses, initialSummary);
 
   function switchTo(next: ExpenseFormat) {
     setFormat(next);
     api.setExpenseFormat(next).catch(() => {
       // Switching the view still works if saving the preference fails
     });
+  }
+
+  async function deleteExpense(expense: Expense) {
+    await api.deleteExpense(expense.id);
+    setExpenses((current) => current.filter((e) => e.id !== expense.id));
   }
 
   return (
@@ -62,7 +75,7 @@ export function ExpenseView({ format: initialFormat, expenses, summary }: Props)
         </div>
       </div>
 
-      {summary.byCategory.length > 0 && (
+      {summary.byCategory.length > 0 && format !== 'chart' && (
         <div className="flex flex-wrap gap-2">
           {summary.byCategory.map((c) => (
             <span key={c.category} className="px-2.5 py-1 rounded-full text-xs bg-zinc-800/70 text-zinc-300">
@@ -77,11 +90,32 @@ export function ExpenseView({ format: initialFormat, expenses, summary }: Props)
           No expenses in this period.
         </div>
       ) : format === 'table' ? (
-        <ExpenseTable expenses={expenses} totalPaise={summary.totalPaise} />
+        <ExpenseTable expenses={expenses} totalPaise={summary.totalPaise} onDelete={deleteExpense} />
       ) : format === 'json' ? (
         <JsonViewer data={toExpenseJson(expenses, summary)} />
       ) : (
-        <ExpenseChart chartData={toDailyChartData(expenses)} labelKey="date" />
+        <div className="space-y-2">
+          <div role="tablist" aria-label="Chart type" className="inline-flex rounded-lg bg-zinc-900 border border-zinc-800 p-0.5">
+            {(['bar', 'pie'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                role="tab"
+                aria-selected={chartType === type}
+                onClick={() => setChartType(type)}
+                className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                  chartType === type ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                }`}>
+                {type === 'bar' ? 'Daily bars' : 'Category pie'}
+              </button>
+            ))}
+          </div>
+          {chartType === 'pie' ? (
+            <CategoryPie byCategory={summary.byCategory} />
+          ) : (
+            <ExpenseChart chartData={toDailyChartData(expenses)} labelKey="date" />
+          )}
+        </div>
       )}
     </div>
   );

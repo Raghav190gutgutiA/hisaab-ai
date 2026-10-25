@@ -7,6 +7,7 @@ import { createApp } from './app.ts';
 import { createExpenseService } from './services/expenses.ts';
 import { createUserService } from './services/users.ts';
 import { createBudgetService } from './services/budget.ts';
+import { createRemovalService } from './services/removal.ts';
 import { createTelegramLinkService } from './services/telegramLink.ts';
 import { createBot, startBot, type HisaabBot } from './telegram/bot.ts';
 
@@ -44,14 +45,19 @@ async function main() {
       historyMessages: config.AGENT_HISTORY_MESSAGES,
     }));
 
+  const expenses = createExpenseService(database.collections);
+  const budget = createBudgetService(database.collections, config.APP_TIMEZONE);
+  const removal = createRemovalService(database.collections, expenses, budget);
+
   let bot: HisaabBot | null = null;
   if (config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_MODE !== 'off') {
     bot = createBot({
       config,
       links: createTelegramLinkService(database.collections),
-      expenses: createExpenseService(database.collections),
+      expenses,
       users: createUserService(database.collections),
-      budget: createBudgetService(database.collections, config.APP_TIMEZONE),
+      budget,
+      removal,
       getAgent,
       updates: database.collections.telegramUpdates,
     });
