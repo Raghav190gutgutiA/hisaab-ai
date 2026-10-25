@@ -1,0 +1,26 @@
+# Pings the API's /health so Render's free instance does not go to sleep
+# (it sleeps after ~15 minutes without traffic).
+#
+# Window: 04:00-15:59 UTC = 9:30 AM - 9:30 PM IST, every 14 minutes.
+# About 60 runs a day, roughly 1,860 billed minutes a month, under the
+# 2,000 free Actions minutes of a private repository. If the repository is
+# made public (unlimited minutes), widen the cron to every hour of the day.
+name: Keep API awake
+
+on:
+  schedule:
+    - cron: '*/14 4-15 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        # A cold start can take up to a minute, so allow a long timeout and retries
+        run: |
+          curl --fail --silent --show-error \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            --max-time 90 \
+            https://hisaab-ai-api.onrender.com/health
